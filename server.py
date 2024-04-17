@@ -4,19 +4,34 @@ import threading
 HOST = '127.0.0.1'
 PORT = 12345
 LISTENER_LIMIT = 5  # Maximum number of clients the server can listen to simultaneously
+BUFFER_SIZE = 4096  # Standard buffer size for network operations
 active_clients = [] # List of all currently connected users
 
 # Function to listen for upcoming messages from a client
 def listen_for_messages(client, username):
-
-    while 1:
-        message = client.recv(2048).decode('utf-8')
-        if message != '':
-            final_msg = username + '~' + message  # Construct final message with username prefix
-            send_messages_to_all(final_msg)  # Send the message to all clients
+    while True:
+        message = client.recv(BUFFER_SIZE).decode('utf-8')
+        if message:
+            if message.startswith("FILE:"):
+                handle_file_reception(client, message[5:], username)
+            else:
+                final_msg = f"{username}~{message}"
+                send_messages_to_all(final_msg)
         else:
-            print(f"The message send from client {username} is empty")
+            print(f"Empty message received from {username}")
+            break
 
+def handle_file_reception(client, filename, username):
+    file_length = int(client.recv(BUFFER_SIZE).decode('utf-8'))
+    with open(filename, 'wb') as f:
+        bytes_read = 0
+        while bytes_read < file_length:
+            bytes = client.recv(BUFFER_SIZE)
+            if not bytes:
+                break
+            f.write(bytes)
+            bytes_read += len(bytes)
+    send_messages_to_all(f"FILE RECEIVED: {username}~{filename}")
 
 # Function to send message to a single client
 def send_message_to_client(client, message):
@@ -30,21 +45,13 @@ def send_messages_to_all(message):
 
 # Function to handle client
 def client_handler(client):
-
-    # Server will listen for client message that will
-    # Contain the username
-    while 1:
-         # Receive the username from the client
-        username = client.recv(2048).decode('utf-8')
-        if username != '':
-            active_clients.append((username, client))
-            prompt_message = "SERVER~" + f"{username} added to the chat"
-            send_messages_to_all(prompt_message)
-            break
-        else:
-            print("Client username is empty")
-
-    threading.Thread(target=listen_for_messages, args=(client, username, )).start()
+    username = client.recv(BUFFER_SIZE).decode('utf-8')
+    if username:
+        active_clients.append((username, client))
+        send_messages_to_all("SERVER~" + f"{username} joined the chat")
+        threading.Thread(target=listen_for_messages, args=(client, username)).start()
+    else:
+        print("Client username is empty")
 
 # Main function
 def main():
@@ -63,9 +70,11 @@ def main():
 
     # Set server limit
     server.listen(LISTENER_LIMIT)
+    print("Waiting for connections...")
+
 
     # This while loop will keep listening to client connections
-    while 1:
+    while True:
         client, address = server.accept()
         print(f"Successfully connected to client {address[0]} {address[1]}")
 
