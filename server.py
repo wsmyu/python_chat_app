@@ -10,15 +10,19 @@ active_clients = [] # List of all currently connected users
 # Function to listen for upcoming messages from a client
 def listen_for_messages(client, username):
     while True:
-        message = client.recv(BUFFER_SIZE).decode('utf-8')
-        if message:
-            if message.startswith("FILE:"):
-                handle_file_reception(client, message[5:], username)
+        try:
+            message = client.recv(BUFFER_SIZE).decode('utf-8')
+            if message:
+                if message.startswith("FILE:"):
+                    handle_file_reception(client, message[5:], username)
+                else:
+                    final_msg = f"{username}~{message}"
+                    send_messages_to_all(final_msg)
             else:
-                final_msg = f"{username}~{message}"
-                send_messages_to_all(final_msg)
-        else:
-            print(f"Empty message received from {username}")
+                print(f"Empty message received from {username}")
+                break
+        except ConnectionResetError:
+            print(f"Connection closed by {username}")
             break
 
 def handle_file_reception(client, filename, username):
